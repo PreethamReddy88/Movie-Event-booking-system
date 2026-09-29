@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CinePrime — Luxury Cinema & Concurrency-Safe Booking</title>
+  <meta name="description" content="Production-grade movie ticket booking system backend with distributed locking and real-time seat reservation.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20%220%22%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+</head>
+<body>
+
+  <!-- ── Toast Notifications ── -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- ── Top Navigation Bar ── -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="brand-icon">🎬</div>
+      <div class="brand-text">CinePrime</div>
+      <span class="brand-badge">SDE Backend</span>
+    </div>
+
+    <div class="nav-links">
+      <div class="nav-item active" onclick="switchTab('moviesSection')">🎥 Movies</div>
+      <div class="nav-item" onclick="switchTab('myBookingsSection')">🎟️ My Bookings</div>
+      <a href="/docs" target="_blank" class="nav-item">⚡ Swagger API</a>
+    </div>
+
+    <div class="nav-actions">
+      <button class="btn-inspector" onclick="toggleInspector()">
+        <span>🔍</span>
+        <span>Concurrency Inspector</span>
+      </button>
+
+      <div id="userArea">
+        <button class="btn-primary" onclick="openAuthModal()">Sign In</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Hero Banner ── -->
+  <section class="hero-section">
+    <div class="hero-banner">
+      <div class="hero-content">
+        <div class="hero-tag">🔥 FEATURED BLOCKBUSTER</div>
+        <h1 class="hero-title" id="heroTitle">Dune: Part Two</h1>
+        <div class="hero-meta">
+          <span class="meta-pill" id="heroGenre">Sci-Fi / Adventure</span>
+          <span id="heroDuration">⏱️ 166 mins</span>
+          <span id="heroLang">🌐 English</span>
+          <span class="meta-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">⭐ 9.2 IMAX</span>
+        </div>
+        <p class="hero-desc" id="heroDesc">
+          Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family in a gripping cinematic masterwork.
+        </p>
+        <div class="hero-buttons">
+          <button class="btn-primary" onclick="quickBookFeatured()">🎟️ Book Tickets Now</button>
+          <button class="btn-secondary" onclick="scrollToMovies()">Browse All Movies</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Main Content Area ── -->
+  <main class="main-container">
+
+    <!-- ── Tab 1: Movies Catalog ── -->
+    <div id="moviesSection">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Now Showing <span class="section-badge" id="movieCountBadge">3 Movies</span></h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">Select any movie below to view live showtimes and pick your seats.</p>
+        </div>
+      </div>
+
+      <!-- Movies Grid (dynamically loaded) -->
+      <div class="movies-grid" id="moviesGrid">
+        <!-- Rendered by app.js -->
+      </div>
+    </div>
+
+    <!-- ── Interactive Showtime & Seat Booking Workspace ── -->
+    <section class="glass-panel booking-workspace" id="bookingWorkspace">
+      <div class="workspace-header">
+        <div class="workspace-movie-meta">
+          <div class="workspace-thumb" id="wsThumb">🎬</div>
+          <div>
+            <h3 style="font-size: 1.4rem; color: #fff;" id="wsMovieTitle">Movie Title</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;" id="wsMovieMeta">Duration • Genre</p>
+          </div>
+        </div>
+        <button class="btn-secondary" onclick="closeWorkspace()">✕ Close</button>
+      </div>
+
+      <!-- Showtimes Container -->
+      <div class="showtimes-container" id="showtimesContainer">
+        <!-- Rendered by app.js -->
+      </div>
+
+      <!-- Cinema Hall Layout -->
+      <div class="cinema-hall" id="cinemaHall" style="display: none;">
+        <!-- Curved Projection Screen -->
+        <div class="screen-container">
+          <div class="screen-curve"></div>
+          <div class="screen-label">IMAX Laser Screen — Eyes this way</div>
+        </div>
+
+        <!-- Seat Matrix Grid -->
+        <div class="seat-matrix" id="seatMatrix">
+          <!-- Rendered by app.js -->
+        </div>
+
+        <!-- Seat Legend -->
+        <div class="seat-legend">
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--seat-available); border: 1px solid var(--seat-available-border);"></div>
+            <span>Available</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--seat-available); border: 1px solid var(--seat-premium-border);"></div>
+            <span>Premium / Recliner</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--seat-selected);"></div>
+            <span>Selected</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-swatch" style="background: var(--seat-booked); border: 1px solid rgba(255,255,255,0.1);"></div>
+            <span>Already Booked</span>
+          </div>
+        </div>
+
+        <!-- Summary & Checkout Bar -->
+        <div class="booking-summary-bar">
+          <div class="summary-details">
+            <div class="selected-seats-text">Selected Seats (<span id="selectedCount">0</span>):</div>
+            <div class="selected-seats-badges" id="selectedBadges">
+              <span style="color: var(--text-dim); font-size: 0.85rem;">Click seats in the hall to select</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 1.5rem;">
+            <div style="text-align: right;">
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Total Amount</div>
+              <div class="total-price-text" id="totalPrice">₹0</div>
+            </div>
+            <button class="btn-primary" id="btnProceedBooking" onclick="handleProceedBooking()" disabled>
+              Proceed to Reserve ➜
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Tab 2: My Bookings ── -->
+    <div id="myBookingsSection" style="display: none;">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">My Bookings History</h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem;">View your reservations, confirmed tickets, or cancel seats to release them back.</p>
+        </div>
+        <button class="btn-secondary" onclick="loadMyBookings()">🔄 Refresh</button>
+      </div>
+
+      <div class="bookings-list" id="bookingsList">
+        <!-- Rendered by app.js -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Modal: Authentication ── -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      <h3 style="font-size: 1.5rem; margin-bottom: 0.5rem;" id="authModalTitle">Sign In to CinePrime</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+        Log in to book tickets, hold real-time locks, and manage reservations.
+      </p>
+
+      <form id="authForm" onsubmit="handleAuthSubmit(event)">
+        <div class="form-group" id="nameGroup" style="display: none;">
+          <label class="form-label">Full Name</label>
+          <input type="text" class="form-input" id="authName" placeholder="John Doe">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" class="form-input" id="authEmail" required placeholder="alex@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" class="form-input" id="authPassword" required placeholder="••••••••">
+        </div>
+
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 0.5rem;" id="authSubmitBtn">
+          Sign In
+        </button>
+      </form>
+
+      <div style="text-align: center; margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+        <span id="authToggleText">Don't have an account?</span>
+        <a href="#" onclick="toggleAuthMode()" style="color: var(--accent-gold-light); font-weight: 600;" id="authToggleLink">Sign Up</a>
+      </div>
+
+      <!-- Quick Demo Login Presets -->
+      <div class="quick-login-grid">
+        <button class="quick-btn" onclick="quickFillLogin('alex@example.com', 'User@123')">
+          <strong>👤 Alex Mercer (User)</strong>
+          alex@example.com
+        </button>
+        <button class="quick-btn" onclick="quickFillLogin('admin@cinema.com', 'Admin@123')">
+          <strong>🛡️ Admin Account</strong>
+          admin@cinema.com
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Payment Processing & Concurrency Simulation ── -->
+  <div class="modal-overlay" id="paymentModal">
+    <div class="modal-box" style="max-width: 520px;">
+      <button class="modal-close" onclick="closePaymentModal()">✕</button>
+      <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem;">
+        <span style="font-size: 1.5rem;">💳</span>
+        <h3 style="font-size: 1.4rem;">Complete Payment</h3>
+      </div>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.25rem;">
+        Your seats are currently held by Redis distributed lock (<span class="mono" style="color: var(--accent-cyan);">TTL: 300s</span>).
+      </p>
+
+      <div class="glass-panel" style="padding: 1.2rem; margin-bottom: 1.5rem; background: rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+          <span style="color: var(--text-muted); font-size: 0.9rem;">Booking ID:</span>
+          <span class="mono" style="font-weight: 700;" id="payBookingId">#1</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+          <span style="color: var(--text-muted); font-size: 0.9rem;">Reserved Seats:</span>
+          <span style="font-weight: 700; color: var(--accent-gold-light);" id="paySeatsText">A1, A2</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--border-subtle); padding-top: 0.5rem; margin-top: 0.5rem;">
+          <span style="font-size: 1rem; font-weight: 700;">Total Payable:</span>
+          <span style="font-size: 1.3rem; font-weight: 800; color: #fff;" id="payAmountText">₹700</span>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 1.25rem;">
+        <label class="form-label">Payment Method</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+          <div class="glass-panel" style="padding: 0.75rem; text-align: center; border-color: var(--accent-gold); cursor: pointer;">
+            <strong>⚡ Instant UPI</strong>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">GPay / PhonePe / Paytm</div>
+          </div>
+          <div class="glass-panel" style="padding: 0.75rem; text-align: center; cursor: pointer; opacity: 0.7;">
+            <strong>💳 Card / NetBanking</strong>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Visa, MC, Rupay</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons for Concurrency Testing -->
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <button class="btn-primary" style="padding: 0.85rem;" onclick="submitPayment(false)">
+          ✅ Pay & Confirm Ticket (Success)
+        </button>
+        <button class="btn-secondary" style="padding: 0.75rem; justify-content: center; color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);" onclick="submitPayment(true)">
+          ❌ Simulate Gateway Failure (Test Lock Release)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Confirmed Ticket Stub ── -->
+  <div class="modal-overlay" id="ticketModal">
+    <div class="modal-box" style="max-width: 500px;">
+      <button class="modal-close" onclick="closeTicketModal()">✕</button>
+      
+      <div class="ticket-stub">
+        <div class="ticket-header">
+          <div>
+            <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--accent-gold-light); font-weight: 700; letter-spacing: 0.1em;">
+              CINEPRIME TICKET
+            </div>
+            <div class="ticket-movie" id="ticketMovieTitle">Dune: Part Two</div>
+          </div>
+          <div class="ticket-badge-confirmed">CONFIRMED</div>
+        </div>
+
+        <div class="ticket-meta-grid">
+          <div>
+            <span>THEATRE</span>
+            <strong id="ticketTheatre">PVR ICON IMAX</strong>
+          </div>
+          <div>
+            <span>SHOWTIME</span>
+            <strong id="ticketShowtime">Today • 06:40 PM</strong>
+          </div>
+          <div>
+            <span>SEATS</span>
+            <strong id="ticketSeats" style="color: var(--accent-gold-light);">A1, A2</strong>
+          </div>
+          <div>
+            <span>BOOKING ID</span>
+            <strong class="mono" id="ticketBookingId">#12</strong>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 0.8rem; font-size: 0.75rem; color: var(--text-dim);">
+          IDEMPOTENCY KEY: <span class="mono" id="ticketIdemKey">uuid-xxxx</span>
+        </div>
+
+        <div class="ticket-barcode"></div>
+      </div>
+
+      <div style="display: flex; gap: 0.75rem;">
+        <button class="btn-primary" style="flex: 1;" onclick="window.print()">🖨️ Print Ticket</button>
+        <button class="btn-secondary" onclick="closeTicketModal()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Concurrency & Architecture Inspector (Drawer) ── -->
+  <aside class="inspector-drawer" id="inspectorDrawer">
+    <div class="inspector-header" onclick="toggleInspector()">
+      <div class="inspector-title">
+        <span>⚡</span>
+        <span>Concurrency & Architecture Inspector</span>
+      </div>
+      <div style="font-size: 0.8rem; color: var(--text-dim);" id="inspectorToggleIcon">▼</div>
+    </div>
+
+    <div class="inspector-logs" id="inspectorLogs">
+      <div class="log-entry">
+        <span class="log-time">[System]</span>
+        <span>CinePrime architecture initialized. Dual-layer concurrency engine active.</span>
+      </div>
+      <div class="log-entry redis">
+        <span class="log-time">[Redis]</span>
+        <span>Layer 1: Distributed lock SET NX EX 300 active.</span>
+      </div>
+      <div class="log-entry db">
+        <span class="log-time">[Postgres]</span>
+        <span>Layer 2: SELECT FOR UPDATE row locking active.</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Vanilla JS Logic ── -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
